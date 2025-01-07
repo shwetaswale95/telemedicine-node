@@ -52,24 +52,20 @@ io.on('connection', (socket) => {
     console.log('Message received:', data);
 
     const messageWithTimestamp = {
-      ...messageData,
+      ...data, // Use the received data
       timestamp: new Date().toISOString(),
     };
-       // Save the message in the database
-    const message = new Message(messageWithTimestamp);
-    message.save();
+     // Save the message in the database
+      const message = new ChatMessage(messageWithTimestamp); // Use your ChatMessage model here
+      await message.save(); // Add `await` to ensure the save operation completes
 
-      // Store the message in memory (optional)
-      messages.push(messageWithTimestamp);
-    // Broadcast the message to all other connected clients
-    socket.broadcast.emit('receive_message', data);
+      socket.broadcast.emit('receive_message', messageWithTimestamp);
   });
 
   socket.on('disconnect', () => {
     console.log('A user disconnected');
   });
 });
-
 // Start the server
 server.listen(3001, () => {
   console.log('Server is running on http://localhost:3001');
