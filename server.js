@@ -51,10 +51,16 @@ io.on('connection', (socket) => {
   socket.on('send_message', async (data) => {
     console.log('Message received:', data);
 
-    // Save the message to MongoDB
-    const newMessage = new ChatMessage(data);
-    await newMessage.save();
+    const messageWithTimestamp = {
+      ...messageData,
+      timestamp: new Date().toISOString(),
+    };
+       // Save the message in the database
+    const message = new Message(messageWithTimestamp);
+    message.save();
 
+      // Store the message in memory (optional)
+      messages.push(messageWithTimestamp);
     // Broadcast the message to all other connected clients
     socket.broadcast.emit('receive_message', data);
   });
