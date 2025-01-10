@@ -3,6 +3,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
+// Import video socket logic
+const signaling = require("./signaling");
 
 // Initialize Express and create server
 const app = express();
@@ -10,13 +12,15 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: "http://localhost:8080",
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true,
   }
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static("public")); // Serve static files if needed
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/chatApp', {
@@ -42,6 +46,8 @@ const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
 io.on('connection', (socket) => {
   console.log('A user connected');
 
+   // Call signaling logic with the socket instance
+   signaling(io, socket);  // Ensures signaling logic uses the correct socket object
   // Send all previous chat messages from the database to the connected client
   ChatMessage.find().then((messages) => {
     socket.emit('load_messages', messages);
