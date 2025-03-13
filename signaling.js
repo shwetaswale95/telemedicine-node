@@ -23,55 +23,53 @@ module.exports = (io, socket) => {
 
   // Handle incoming call offer
   socket.on("call-offer", async (data) => {
+    console.log(`📞 Call offer from ${data.from} to ${data.to}`);
+  
     const recipientSocket = users[data.to];
     if (recipientSocket) {
-      // Emit call offer to the recipient user
-      io.to(recipientSocket).emit("call-offer", {
-        offer: data.offer,
-        from: data.from,
-      });
-
-      // Save call offer to the database
+      console.log(`✅ Relaying call offer to ${data.to}`);
+      io.to(recipientSocket).emit("call-offer", { from: data.from, offer: data.offer });
+  
+      // Save call data in DB
       try {
-        const call = new CallData({
-          from: data.from,
-          to: data.to,
-          offer: data.offer,
-        });
-        await call.save();
-        console.log("Call offer saved in the database.");
+        await CallData.create({ from: data.from, to: data.to, offer: data.offer });
+        console.log("Call offer saved to the database.");
       } catch (err) {
-        console.error("Error saving call offer to the database:", err);
+        console.error("Error saving call offer:", err);
       }
     } else {
-      console.log(`Recipient with ID ${data.to} not found.`);
+      console.log(`❌ User ${data.to} not found.`);
     }
   });
+  
 
   // Handle incoming call answer
   socket.on("call-answer", async (data) => {
     const recipientSocket = users[data.to];
     if (recipientSocket) {
-      // Emit the answer to the recipient user
-      io.to(recipientSocket).emit("call-answer", {
-        answer: data.answer,
-      });
-
-      // Update the database with the call answer
+      io.to(recipientSocket).emit("call-answer", { answer: data.answer });
+  
       try {
-        await CallData.findOneAndUpdate(
-          { from: data.to, to: data.from },
+        const updatedCall = await CallData.findOneAndUpdate(
+          { from: data.from, to: data.to },
           { answer: data.answer },
           { new: true }
         );
-        console.log("Call answer updated in the database.");
+  
+        if (updatedCall) {
+          console.log("✅ Call answer updated in DB.");
+        } else {
+          console.log("⚠️ No matching call found, creating new entry.");
+          await CallData.create({ from: data.from, to: data.to, answer: data.answer });
+        }
       } catch (err) {
-        console.error("Error updating call answer in the database:", err);
+        console.error("Error updating call answer:", err);
       }
     } else {
-      console.log(`Recipient with ID ${data.to} not found.`);
+      console.log(`❌ Recipient ${data.to} not found.`);
     }
   });
+  
 
   // Handle incoming ICE candidates
   socket.on("ice-candidate", (data) => {
@@ -87,25 +85,52 @@ module.exports = (io, socket) => {
   });
 
   // Handle call rejection
-  socket.on("call-reject", (data) => {
+  socket.on("call-reject", async (data) => {
     const recipientSocket = users[data.to];
     if (recipientSocket) {
-      // Emit call rejection to the recipient user
       io.to(recipientSocket).emit("call-reject");
+      console.log(`🚫 Call rejected by ${data.from} to ${data.to}`);
+  
+      try {
+        await CallData.findOneAndUpdate(
+          { from: data.to, to: data.from },
+          { answer: "rejected" },
+          { new: true }
+        );
+      } catch (err) {
+        console.error("Error logging call rejection:", err);
+      }
     } else {
-      console.log(`Recipient with ID ${data.to} not found.`);
+      console.log(`❌ Recipient ${data.to} not found.`);
     }
   });
+  
 
+  socket.on("call-ended", (data) => {
+    const recipientSocket = users[data.to];
+    if (recipientSocket) {
+      io.to(recipientSocket).emit("call-ended");
+      console.log(`Call ended notification sent to ${data.to}`);
+    }
+  });
+  
   // Handle user disconnection
   socket.on("disconnect", () => {
+    let disconnectedUser = null;
     for (const [userId, socketId] of Object.entries(users)) {
       if (socketId === socket.id) {
-        // Remove the user from the active users list
+        disconnectedUser = userId;
         delete users[userId];
-        console.log(`User disconnected: ${userId}`);
+        console.log(`🔌 User disconnected: ${userId}`);
         break;
       }
     }
+  
+    if (disconnectedUser) {
+      for (const [userId, socketId] of Object.entries(users)) {
+        io.to(socketId).emit("user-disconnected", { userId: disconnectedUser });
+      }
+    }
   });
+  
 };
